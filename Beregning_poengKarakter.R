@@ -58,8 +58,8 @@ V23_difference_in_points <- data.frame(
 V22_difference_in_points$justertpoengsum <- V22_difference_in_points$poengsum - V22_difference_in_points$poengsorskjell
 V23_difference_in_points$justertpoengsum <- V23_difference_in_points$poengsum - V23_difference_in_points$poengsorskjell
 
-karaktergrense_V22 <- c(-Inf,  38, 52.5, 64.5, 76.5, 88.5, 150)
-karaktergrense_V23 <- c(-Inf,36.5, 52.5, 64.5, 76.5, 88.5, 150)
+karaktergrense_V22 <- c(-Inf,   38, 52.5, 64.5, 76.5, 88.5, 150)
+karaktergrense_V23 <- c(-Inf, 36.5, 52.5, 64.5, 76.5, 88.5, 150)
 karakterer         <- c("F","E","D","C","B","A")
 
 points_to_grade <- function(data, grades, grade_threshold){

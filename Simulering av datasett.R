@@ -1,15 +1,15 @@
 # Setting seed:
-set.seed(1)
+set.seed(2)
 
 #Defining function:
 simulate_data <- function(N=100, 
                           K=2, 
                           K_f=FALSE, 
-                          s=c(0,0), 
-                          gamma=rep(0,100), 
+                          s=redp(1,K), 
+                          gamma=rep(0,N), 
                           QA=2, AT=c(-0.5, 1), 
-                          QM = 2, 
-                          MT=matrix(c(-1,-0.5,3,4,5,6),nrow=2,ncol = 3, byrow = TRUE), 
+                          QM=2, MT=matrix(c(-1,-0.5,3,4,5,6), nrow=2, ncol=3, byrow=TRUE),
+                          lambda=rep(1,QA+QM), kappa=rep(1,QM),
                           model = 1){
   
  "DESCRIPTION OF THE FUNCTION:
@@ -17,12 +17,13 @@ simulate_data <- function(N=100,
     N: Number of students
     K: Number of commissions [N must be divisible by K]
     K_f: The partition of the comissions [Must be divisible by N and K]
-    SB: The mean of each of the comissions
+    s: The mean of each of the comissions
     QA: Number of automatic corrected questions
+    AT: Threshold for the Automatic questions
     QM: Number of manually questions
     model: The type of model used
   
-  This function simulates resualts from exams based on the model we want to evaluate. 
+  This function simulates results from exams based on the model we want to evaluate. 
   "
   
   
@@ -62,13 +63,18 @@ simulate_data <- function(N=100,
   
   #Defining models:
   if (model == 1){
-    eta_a <- function(i) gamma[i]
-    eta_m <- function(i) gamma[i] + s[simulated_data$kommisjon[i]]
+    eta_a <- function(q,i) gamma[i]
+    eta_m <- function(q,i) gamma[i] + s[simulated_data$kommisjon[i]]
+  }
+  
+  if (model == 2){
+    eta_a <- function(q,i) lambda[q]*gamma[i]
+    eta_m <- function(q,i) lambda[q+QA]*gamma[i] + kappa(q)*s[simulated_data$kommisjon[i]]
   }
   
   for (q in 1:QA){
     for (i in 1:N){
-      eta_pred <- eta_a(i)
+      eta_pred <- eta_a(q,i) + rnorm(1,0,1)
       if (eta_pred > AT[q]){
         simulated_data$Y[i,q] <- 1
       }
@@ -77,7 +83,7 @@ simulate_data <- function(N=100,
   
   for (q in 1:QM){
     for (i in 1:N){
-      eta_pred <- eta_m(i)
+      eta_pred <- eta_m(q,i) + rnorm(1,0,1)
       for (j in 1:length(MT[1,])){
         if(eta_pred > MT[q,j]){
           simulated_data$Y[i,q+QA] <- j
@@ -86,20 +92,46 @@ simulate_data <- function(N=100,
     }
   }
 
-
   return(data.frame(kommisjon = simulated_data$kommisjon,
                     kandidatnummer = simulated_data$kandidatnummer,
-                    gamma = gamma,
+                    ferdigheter = gamma,
                     Y = I(simulated_data$Y)))
 }
 
-#debugonce(simulate_data)
-#SD_2022 <- simulate_data()
-#SD_2022B <- simulate_data(N=100, K=4, K_f=c(1/4, 2/4, 1/4, 0/4), QA = 15, QM = 2, model = 0)
+make_parameter_list <- function(N, K, log_std_gamma = log(1), log_std_s = log(1), QA, QM, Theta_a, Theta_m){
+  
+  par <- list(
+    # Random effects
+    s     = rep(0,K),          # Examiner random effects
+    gamma = rep(0,N),          # Student random effects
+    
+    # Standard deviation
+    log_std_s      = log_std_s,   # Std deviation for examiners
+    log_std_gamma  = log_std_gamma,   # Std deviation for students
+    
+    # Parameter to model the IRT
+    lambda = rep(1, (QA+QM)),
+    kappa  = rep(1, QM) #Bytte til noe som gj??r dette uavhengig??
+  )
+  
+  #Generating the alphas form the Thresholds:
+  alphas <- create_true_thresholds(Theta_a, Theta_m)
+  
+  for (i in 1:(QA+QM)) {
+    par[[paste0("alpha", i)]] <- alphas[[paste0("Q",i)]]
+  }
+  
+  return(par)
+}
 
-#Lets test it:
-N = 100
-K = 2
+#################
+## SIMULATIONS ##
+#################
+
+#Initializing parameters:
+N = 1000
+K = 5 
+K_f = FALSE
 
 mu_gamma = 0
 mu_s     = 0
@@ -107,24 +139,160 @@ mu_s     = 0
 log_std_gamma = log(1)
 log_std_s     = log(1)
 
-QA = 10
-QM = 4
-Lvl = 20
+QA = 40
+QM = 6 
+Lvl = 10
+
+lambda = rep(1, (QA+QM))
+kappa  = rep(1, QM)
 
 Theta_a <- c(-1.5, seq(-1, 1, ((1 - -1)/(QA - 3))), 1.5)
 Theta_m <- t(apply(matrix(runif(QM*Lvl, -3, 3), QM, Lvl), 1 , sort))
-  
-gamma <- rnorm(N, mu_gamma, exp(log_std_gamma))
-s     <- rnorm(K, mu_s    , exp(log_std_s    ))
 
-SD_1_par   <- list(N=N, K=K, mu_gamma=mu_gamma, mu_s=mu_s, log_std_gamma=log_std_gamma, log_std_s=log_std_s, QA=QA, QM=QM, Theta_a=Theta_a, Theta_m=Theta_m, gamma=gamma, s=s)
-SD_1_data  <- simulate_data(N=N, 
-                          K=K, 
-                          K_f=FALSE, 
-                          s=s, 
-                          gamma=gamma, 
-                          QA=QA, 
-                          AT=Theta_a, 
-                          QM=QM, 
-                          MT=Theta_m, 
-                          model = 1)
+N_S <- 1
+a <- make_parameter_list(N, K, log_std_gamma, log_std_s, QA, QM, Theta_a, Theta_m)
+a
+#true_values$alpha
+#estimated_parameters$alpha[,1]
+
+#Performing the simulations and error estimation:
+simulation <- function(N_S, modelchoice){
+
+  error_gamma <- rep(0,N)
+  error_s     <- rep(0,K)
+  error_std_gamma <- 0
+  error_std_s     <- 0
+  error_lambda = rep(0, (QA+QM))
+  error_kappa  = rep(0, QM)
+  
+  for (i in 1:N_S) {
+    set.seed(i)
+    
+    #Generate gamma and s:
+    gamma_true <- rnorm(N, mu_gamma, exp(log_std_gamma))
+    s_true     <- rnorm(K, mu_s    , exp(log_std_s    ))
+    
+    #Generate lambda and kappa:
+    lambda_true <- rnorm((QA+QM), 1, 0.25)
+    kappa_true  <- rnorm(QM,      1, 0.25)
+    
+    #Simulating the data:
+    simulated_data <- simulate_data(N=N, K=K, K_f=K_f, s=s_true, gamma=gamma_true, QA=QA, AT=Theta_a, QM=QM, MT=Theta_m, kappa=kappa_true, lambda=lambda_true, model=modelchoice)
+    
+    #Creating list of parameters
+    params <- make_parameter_list(N, K, log_std_gamma, log_std_s, QA, QM, Theta_a, Theta_m)
+    
+    #Estimating parameters:
+    data <- simulated_data
+    
+    #To access all the variables:
+    getAll(params)
+    
+    if (modelchoice == 1){
+      obj  <- MakeADFun(func = f, parameters = params, random=c("gamma", "s"), map = list(lambda = factor(rep(NA, QA + QM)), kappa = factor(rep(NA, QM))))
+    } 
+    
+    if (modelchoice == 2){
+      obj  <- MakeADFun(func = f, parameters = params, random=c("gamma", "s"), map = list(log_std_gamma = factor(NA), log_std_s=factor(NA)))
+    }
+    
+    fit  <- nlminb(start = obj$par, objective = obj$fn, gradient = obj$gr)
+    sdr  <- sdreport(obj)
+    smry <- summary(sdr, select = c("all", "fixed", "random", "report"), p.value = TRUE)
+
+    #Ordering the estimated values
+    estimated_parameters <- ordering_estimators(smry, data, QA, QM)
+    
+    #True parameters used:
+    true_values <- list(gamma=gamma_true, s=s_true, log_std_gamma=log_std_gamma, log_std_s=log_std_s, Theta_a=Theta_a, Theta_m=Theta_m, alphas=create_true_thresholds(Theta_a, Theta_m), kappa=kappa_true, lambda=lambda_true)
+    
+    #Calculating errors:
+    difference_std_gamma <- exp(estimated_parameters$log_std_gamma[1])-exp(true_values$log_std_gamma)
+    difference_std_s     <- exp(estimated_parameters$log_std_s[1])    -exp(true_values$log_std_s)
+    
+    if (modelchoice == 2){
+      difference_std_gamma <- exp(estimated_parameters$log_std_gamma[1])-exp(true_values$log_std_gamma)
+      difference_std_s     <- exp(estimated_parameters$log_std_s[1])    -exp(true_values$log_std_s)
+    }
+    
+    difference_s     <- estimated_parameters$s[,1]    -true_values$s
+    difference_gamma <- estimated_parameters$gamma[,1]-true_values$gamma
+    
+    difference_kappa  <- estimated_parameters$kappa[,1] -true_values$kappa
+    difference_lambda <- estimated_parameters$lambda[,1]-true_values$lambda
+    
+    #Updating average error:
+    error_std_gamma <- (error_std_gamma*(i-1) + abs(difference_std_gamma))/i
+    error_std_s     <- (error_std_s*(i-1)     + abs(difference_std_s    ))/i 
+    
+    error_gamma <- (error_gamma*(i-1) + abs(difference_gamma))/i
+    error_s     <- (error_s*(i-1)     + abs(difference_s    ))/i
+    
+    error_kappa  <- (error_kappa *(i-1) + abs(difference_kappa ))/i
+    error_lambda <- (error_lambda*(i-1) + abs(difference_lambda))/i 
+    
+    plot(seq(length(difference_gamma)), abs(difference_gamma))
+  }
+  
+  return(list(std_gamma=error_std_gamma, 
+              std_s=error_std_s, 
+              gamma=error_gamma, 
+              s=error_s, 
+              kappa=error_kappa, 
+              lambda=error_lambda))
+}
+
+debugonce(simulation)
+error <- simulation(1, 1)
+
+plot(seq(length(error$gamma)), abs(error$gamma))
+abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
+
+plot(seq(length(error$gamma)), abs(rnorm(N,0,1)-rnorm(N,0,1)))
+abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
+
+error <- simulation(2, 1)
+
+plot(seq(length(error$gamma)), abs(error$gamma))
+abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
+
+plot(seq(length(error$gamma)), abs(rnorm(N,0,1)-rnorm(N,0,1)))
+abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
+
+plot(seq(length(error$s)), abs(error$s))
+abline(h = mean(error$s), col = "red", lwd = 2, lty = 2)
+
+plot(seq(length(error$lambda)), abs(error$lambda))
+abline(h = mean(error$lambda), col = "red", lwd = 2, lty = 2)
+
+plot(seq(length(error$kappa)), abs(error$kappa))
+abline(h = mean(error$kappa), col = "red", lwd = 2, lty = 2)
+
+plot(seq(length(error$std_gamma)), abs(error$std_gamma))
+
+plot(seq(length(error$std_s)), abs(error$std_s))
+
+################
+### PLOTTING ###
+################
+
+library(ggplot2)
+y = cumsum(rnorm(100))
+#Simulerer noen data
+set.seed(123)
+df <- data.frame(
+  x = 1:100,
+  y = y,   # En tilfeldig trend
+  ymin = y - 5,  # Nedre b??nd
+  ymax = y + 5   # ??vre b??nd
+)
+
+# Plot med konfidensb??nd
+ggplot(df, aes(x=x, y=y)) +
+  geom_ribbon(aes(ymin=ymin, ymax=ymax), fill="steelblue", alpha=0.3) +
+  geom_line(color="steelblue", size=1.2) +
+  theme_minimal() +
+  labs(title="Kul graf med usikkerhet", x="Tid", y="Verdi") +
+  theme(plot.title = element_text(size=16, face="bold", hjust=0.5))
+
+set.seed(1)

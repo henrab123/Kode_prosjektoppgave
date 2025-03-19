@@ -7,6 +7,12 @@ library(rjson)
 All_V22 <- fromJSON(file = 'C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\result_export_22.json')
 All_V23 <- fromJSON(file = 'C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\result_export_23.json')
 
+
+# All_V21 <- fromJSON(file = 'C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\TMA4245_V21_Cleaned.json')
+All_V22_SUP <- fromJSON(file = 'C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\TMA4245_V22_Cleaned.json')
+All_V23_SUP <- fromJSON(file = 'C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\TMA4245_V23_Cleaned.json')
+
+
 Sensor_V22 <- read.csv("C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\sensor_22.csv", sep=';')
 Sensor_V22$kandidatnummer <- as.character(Sensor_V22$kandidatnummer)
 Sensor_V23 <- read.csv("C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\sensor_23.csv", sep=';')
@@ -23,8 +29,53 @@ library(tibble)
 library(tidyr)
 library(dplyr)
 
+# data_V21 <- tibble(place = All_V21$candidates)
 data_V22 <- tibble(place = All_V22$ext_inspera_candidates)
 data_V23 <- tibble(place = All_V23$ext_inspera_candidates)
+
+data_V22_sup <- tibble(place = All_V22_SUP$candidates)
+data_V23_sup <- tibble(place = All_V23_SUP$candidates)
+
+
+V22_SUP <- data_V22_sup %>%
+           unnest_wider(place) %>%
+           select(candidateId, evaluationRounds) %>%
+           unnest_wider(evaluationRounds, names_sep = "_") %>%
+           unnest_wider(evaluationRounds_1) %>%
+           unnest_wider(roundGrades, names_sep = "_") %>%
+           unnest_wider(questions, names_sep = "_") %>%
+           unnest_wider(questions_3, names_sep = "_") %>%
+           unnest_wider(questions_6, names_sep = "_") %>%
+  
+           select(candidateId, roundId, Question5 = questions_3_evaluations, Question6 = questions_6_evaluations) %>%
+
+           unnest_wider(Question5, names_sep="_") %>%
+           unnest_wider(Question5_2, names_sep="_") %>%
+  
+           unnest_wider(Question6, names_sep="_") %>%
+           unnest_wider(Question6_2, names_sep="_") %>%
+  
+           select(candidateId, sensorId = Question6_2_evaluatorId, roundId, Question5 = Question5_2_score, Question6 = Question6_2_score)
+
+V23_SUP <- data_V23_sup %>%
+           unnest_wider(place) %>%
+           select(candidateId, evaluationRounds) %>%
+           unnest_wider(evaluationRounds, names_sep = "_") %>%
+           unnest_wider(evaluationRounds_1) %>%
+           unnest_wider(roundGrades, names_sep = "_") %>%
+           unnest_wider(questions, names_sep = "_") %>%
+           unnest_wider(questions_4, names_sep = "_") %>%
+           unnest_wider(questions_5, names_sep = "_") %>%
+  
+           select(candidateId, roundId, Question4 = questions_4_evaluations, Question5 = questions_5_evaluations) %>%
+  
+           unnest_wider(Question4, names_sep="_") %>%
+           unnest_wider(Question4_2, names_sep="_") %>%
+  
+           unnest_wider(Question5, names_sep="_") %>%
+           unnest_wider(Question5_2, names_sep="_") %>%
+  
+           select(candidateId, sensorId = Question5_2_evaluatorId, roundId, Question4 = Question4_2_score, Question5 = Question5_2_score)
 
 #V2022:
 V22 <- data_V22 %>% 
@@ -439,6 +490,9 @@ for (i in (1:nrow(V23))){
 
 V22 <- right_join(Sensor_V22, V22, by = c("kandidatnummer" = "ext_inspera_candidateId"))
 V23 <- right_join(Sensor_V23, V23, by = c("kandidatnummer" = "ext_inspera_candidateId"))
+
+V22 <- left_join(V22, V22_SUP, by=c("kandidatnummer" = "candidateId"))
+V23 <- left_join(V23, V23_SUP, by=c("kandidatnummer" = "candidateId"))
 
 V22 <- V22 %>% filter(kommisjon <= 6) %>%
                distinct(kandidatnummer, .keep_all = TRUE)
