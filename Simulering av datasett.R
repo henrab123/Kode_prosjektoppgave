@@ -139,7 +139,7 @@ mu_s     = 0
 log_std_gamma = log(1)
 log_std_s     = log(1)
 
-QA = 40
+QA = 20
 QM = 6 
 Lvl = 10
 
@@ -150,13 +150,12 @@ Theta_a <- c(-1.5, seq(-1, 1, ((1 - -1)/(QA - 3))), 1.5)
 Theta_m <- t(apply(matrix(runif(QM*Lvl, -3, 3), QM, Lvl), 1 , sort))
 
 N_S <- 1
-a <- make_parameter_list(N, K, log_std_gamma, log_std_s, QA, QM, Theta_a, Theta_m)
-a
+
 #true_values$alpha
 #estimated_parameters$alpha[,1]
 
 #Performing the simulations and error estimation:
-simulation <- function(N_S, modelchoice){
+simulation <- function(N_S, modelchoice, initialconditions="Zero"){
 
   error_gamma <- rep(0,N)
   error_s     <- rep(0,K)
@@ -182,11 +181,18 @@ simulation <- function(N_S, modelchoice){
     #Creating list of parameters
     params <- make_parameter_list(N, K, log_std_gamma, log_std_s, QA, QM, Theta_a, Theta_m)
     
+    if (initialconditions == "True"){
+      params$gamma  <- gamma_true
+      params$s      <- s_true
+      params$lambda <- lambda_true
+      params$kappa  <- kappa_true
+    }
+    
     #Estimating parameters:
-    data <- simulated_data
+    data <<- simulated_data
     
     #To access all the variables:
-    getAll(params)
+    getAll(data, params)
     
     if (modelchoice == 1){
       obj  <- MakeADFun(func = f, parameters = params, random=c("gamma", "s"), map = list(lambda = factor(rep(NA, QA + QM)), kappa = factor(rep(NA, QM))))
@@ -231,7 +237,7 @@ simulation <- function(N_S, modelchoice){
     error_kappa  <- (error_kappa *(i-1) + abs(difference_kappa ))/i
     error_lambda <- (error_lambda*(i-1) + abs(difference_lambda))/i 
     
-    plot(seq(length(difference_gamma)), abs(difference_gamma))
+    #plot(seq(length(difference_gamma)), abs(difference_gamma))
   }
   
   return(list(std_gamma=error_std_gamma, 
@@ -242,19 +248,105 @@ simulation <- function(N_S, modelchoice){
               lambda=error_lambda))
 }
 
-debugonce(simulation)
-error <- simulation(1, 1)
+#debugonce(simulation)
+
+
+#TESTING MODEL 1 WITH I.C.
+error <- simulation(3, 1, "True")
+
+plot(seq(length(error$gamma)), abs(error$gamma), main = "True I.C - Model 1")
+abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
+
+error <- simulation(3, 1)
+
+plot(seq(length(error$gamma)), abs(error$gamma), main = "Random I.C - Model 1")
+abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
+
+#TESTING MODEL 2 WITH I.C.
+error <- simulation(3, 2, "True")
+
+plot(seq(length(error$gamma)), abs(error$gamma), main = "True I.C - Model 2")
+abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
+
+error <- simulation(3, 2)
+
+plot(seq(length(error$gamma)), abs(error$gamma), main = "Random I.C - Model 2")
+abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
+
+#TESTING FOR N:
+
+#Initializing parameters:
+Ns = c(300,400,500,600,700,800,900,1000)
+error_bar_gamma <- rep(0, length(Ns))
+error_bar_s     <- rep(0, length(Ns))
+
+for (i in 1:length(Ns)){
+  N <- Ns[i]
+  error <- simulation(5, 1)
+  error_bar_gamma[i] <- mean(error$gamma)
+  error_bar_s[i]     <- mean(error$s)
+}
+
+plot(Ns, error_bar_s, main = "Error of s of N")
+abline(h = mean(error_bar_s), col = "red", lwd = 2, lty = 2)
+
+
+#TESTING FOR QA:
+#Initializing parameters:
+QAs = c(10,15,20,25,30,35,40,45,50)
+
+error_bar_gamma <- rep(0, length(Ns))
+error_bar_s     <- rep(0, length(Ns))
+
+for (i in 1:length(Ns)){
+  QA <- QAs[i]
+  lambda = rep(1, (QA+QM))
+  Theta_a <- c(-1.5, seq(-1, 1, ((1 - -1)/(QA - 3))), 1.5)
+  error <- simulation(5, 1)
+  error_bar_gamma[i] <- mean(error$gamma)
+  error_bar_s[i]     <- mean(error$s)
+}
+QAs = c(10,15,20,25,30,35,40,45)
+plot(QAs, error_bar_gamma, main = "Error of gamma of QA")
+abline(h = mean(error_bar_gamma), col = "red", lwd = 2, lty = 2)
+error_bar_gamma
+
+
+
+error <- simulation(5, 1)
 
 plot(seq(length(error$gamma)), abs(error$gamma))
 abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
 
-plot(seq(length(error$gamma)), abs(rnorm(N,0,1)-rnorm(N,0,1)))
+error <- simulation(5, 1)
+
+plot(seq(length(error$gamma)), abs(rnorm(N,0,1)-rnorm(N,0,1)), , main = "Random I.C.")
 abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
 
-error <- simulation(2, 1)
+
+error <- simulation(50, 1)
 
 plot(seq(length(error$gamma)), abs(error$gamma))
 abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 plot(seq(length(error$gamma)), abs(rnorm(N,0,1)-rnorm(N,0,1)))
 abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)

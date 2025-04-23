@@ -7,11 +7,9 @@ library(rjson)
 All_V22 <- fromJSON(file = 'C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\result_export_22.json')
 All_V23 <- fromJSON(file = 'C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\result_export_23.json')
 
-
 # All_V21 <- fromJSON(file = 'C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\TMA4245_V21_Cleaned.json')
 All_V22_SUP <- fromJSON(file = 'C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\TMA4245_V22_Cleaned.json')
 All_V23_SUP <- fromJSON(file = 'C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\TMA4245_V23_Cleaned.json')
-
 
 Sensor_V22 <- read.csv("C:\\Users\\andre\\OneDrive\\Skrivebord\\Filer-Master\\sensor_22.csv", sep=';')
 Sensor_V22$kandidatnummer <- as.character(Sensor_V22$kandidatnummer)
@@ -47,7 +45,9 @@ V22_SUP <- data_V22_sup %>%
            unnest_wider(questions_3, names_sep = "_") %>%
            unnest_wider(questions_6, names_sep = "_") %>%
   
-           select(candidateId, roundId, Question5 = questions_3_evaluations, Question6 = questions_6_evaluations) %>%
+           select(candidateId, finalGradeLabel, roundId, roundGrades_1, Question5 = questions_3_evaluations, Question6 = questions_6_evaluations) %>%
+           
+           unnest_wider(roundGrades_1) %>%
 
            unnest_wider(Question5, names_sep="_") %>%
            unnest_wider(Question5_2, names_sep="_") %>%
@@ -55,7 +55,7 @@ V22_SUP <- data_V22_sup %>%
            unnest_wider(Question6, names_sep="_") %>%
            unnest_wider(Question6_2, names_sep="_") %>%
   
-           select(candidateId, sensorId = Question6_2_evaluatorId, roundId, Question5 = Question5_2_score, Question6 = Question6_2_score)
+           select(candidateId, finalGradeLabel, roundId, sensorId = Question6_2_evaluatorId, roundId, Question5 = Question5_2_score, Question6 = Question6_2_score)
 
 V23_SUP <- data_V23_sup %>%
            unnest_wider(place) %>%
@@ -67,7 +67,9 @@ V23_SUP <- data_V23_sup %>%
            unnest_wider(questions_4, names_sep = "_") %>%
            unnest_wider(questions_5, names_sep = "_") %>%
   
-           select(candidateId, roundId, Question4 = questions_4_evaluations, Question5 = questions_5_evaluations) %>%
+           select(candidateId, finalGradeLabel, roundId, roundGrades_1, Question4 = questions_4_evaluations, Question5 = questions_5_evaluations) %>%
+  
+           unnest_wider(roundGrades_1) %>%
   
            unnest_wider(Question4, names_sep="_") %>%
            unnest_wider(Question4_2, names_sep="_") %>%
@@ -75,7 +77,7 @@ V23_SUP <- data_V23_sup %>%
            unnest_wider(Question5, names_sep="_") %>%
            unnest_wider(Question5_2, names_sep="_") %>%
   
-           select(candidateId, sensorId = Question5_2_evaluatorId, roundId, Question4 = Question4_2_score, Question5 = Question5_2_score)
+           select(candidateId, finalGradeLabel, roundId, sensorId = Question5_2_evaluatorId, roundId, Question4 = Question4_2_score, Question5 = Question5_2_score)
 
 #V2022:
 V22 <- data_V22 %>% 
@@ -494,10 +496,43 @@ V23 <- right_join(Sensor_V23, V23, by = c("kandidatnummer" = "ext_inspera_candid
 V22 <- left_join(V22, V22_SUP, by=c("kandidatnummer" = "candidateId"))
 V23 <- left_join(V23, V23_SUP, by=c("kandidatnummer" = "candidateId"))
 
-V22 <- V22 %>% filter(kommisjon <= 6) %>%
+V22 <- V22 %>% mutate(ext_inspera_manual_Score5 = Question5, ext_inspera_manual_Score6 = Question6) %>%
+               select(-sensor1, -sensor2) %>%
+               mutate(totalScore = ext_inspera_autoScore + Question5 + Question6) %>%
+               mutate(checkTotalScore = totalScore == ext_inspera_totalScore) %>%
+               mutate(checkTotalScoreNA = !is.na(ext_inspera_totalScore)) %>%
+               mutate(ext_inspera_totalScore = totalScore, ext_inspera_finalGrade = finalGradeLabel) %>%
+               mutate(klagde = case_when(kommisjon == 7 ~ TRUE,
+                                         kommisjon == 8 ~ TRUE))%>%
                distinct(kandidatnummer, .keep_all = TRUE)
-V23 <- V23 %>% filter(kommisjon <= 8) %>%
+
+V23 <- V23 %>% mutate(ext_inspera_manual_Score4 = Question4, ext_inspera_manual_Score5 = Question5) %>%
+               select(-sensor1, -sensor2) %>%
+               mutate(totalScore = ext_inspera_autoScore + Question4 + Question5) %>%
+               mutate(klagde = case_when(kommisjon == 9  ~ TRUE,
+                                         kommisjon == 10 ~ TRUE,
+                                         kommisjon == 11 ~ TRUE)) %>%
                distinct(kandidatnummer, .keep_all = TRUE)
+
+V22 <- V22 %>%   mutate(kommisjon = case_when(sensorId == 6731152 ~ 1,
+                                              sensorId == 4576608 ~ 2,
+                                              sensorId == 91385056 ~ 3,
+                                              sensorId == 4578543 ~ 4,
+                                              sensorId == 54222899 ~ 5,
+                                              sensorId == 4588800 ~ 6))
+
+V23 <- V23 %>%   mutate(kommisjon = case_when(sensorId == 4576608 ~ 1,
+                                              sensorId == 6731152 ~ 2,
+                                              sensorId == 91385056 ~ 3,
+                                              sensorId == 4594128 ~ 4,
+                                              sensorId == 120394339 ~ 5,
+                                              sensorId == 89108842 ~ 6,
+                                              sensorId == 54222899 ~ 7,
+                                              sensorId == 4588800 ~ 8))
+
+SensorIDs_V23 <- unique(V23$sensorId)
+Kommisjonsnummer_V22 <- c()
+SensorIDs_V23
 
 #https://www.theuncertaintyproject.org/tools/noise-audit 
 
@@ -681,4 +716,12 @@ V23$Y_m <- cbind(
 
 RTMB_V23 <- V23 %>% select(kommisjon, kandidatnummer, Y, Y_m)
 
+#Preparing for klageanalyse:
 
+KLAGE_V22 <- V22 %>% select(kommisjon, kandidatnummer, finalGradeLabel, totalScore, klagde) %>%
+                     mutate(klagde = ifelse(!is.na(klagde), 1, 0))
+
+
+KLAGE_V23 <- V23 %>% select(kommisjon, kandidatnummer, finalGradeLabel, totalScore, klagde)%>%
+                     mutate(klagde = ifelse(!is.na(klagde), 1, 0))
+                       
