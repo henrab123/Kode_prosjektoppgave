@@ -1,3 +1,5 @@
+library(truncnorm)
+
 ######################################
 ## GETTING THE ESTIMASTES FROM RTMB ##
 ######################################
@@ -127,27 +129,13 @@ naive_prediction <- function(estimated_par, data, s=TRUE){
     
     # Automatically corrected question q
     if (n_alpha[q] == 1){
-      
-      #Finding the thresholds:
-      theta_q   <- c(alpha_to_theta(estimated_par$alpha[[q]][1]), Inf)
-      
-      #Updating predictor:
-      predictor <- eta_without_s
-      
-      #Predicting response
-      for (i in 1:nrow(data$Y)) {
-        for (yij in 1:(n_alpha[q]+1)) {
-          if (predictor[i] < theta_q[yij]){
-            Y_predicted[i,q] <- yij-1
-            break
-          }
-        }
-      }
+      Y_predicted[,q] <- data$Y[,q]
+    
     # Manually corrected q:
     } else {
       
       #Finding the thresholds:
-      theta_q <- c(alpha_to_theta(estimated_par$alpha[[q]][,1]), Inf)
+      theta_q <- c(alpha_to_theta(estimated_par$alpha[grep(paste0("^", paste0("alpha", q), "($|\\.)"), rownames(estimated_par$alpha)), 1]), Inf)
       
       # Updating predictor:
       if (s){
@@ -169,7 +157,6 @@ naive_prediction <- function(estimated_par, data, s=TRUE){
   }
   
   return(Y_predicted)
-  
 }
 
 #debugonce(naive_prediction)
@@ -178,6 +165,88 @@ predicted_V22_m1 <- naive_prediction(estimated_parameters_V22_m1,RTMB_V22, s=TRU
 predicted_V22_m2 <- naive_prediction(estimated_parameters_V22_m2,RTMB_V22, s=TRUE)
 predicted_V23_m1 <- naive_prediction(estimated_parameters_V23_m1,RTMB_V23, s=TRUE)
 predicted_V23_m2 <- naive_prediction(estimated_parameters_V23_m2,RTMB_V23, s=TRUE)
+
+
+truncated_prediction <- function(estimated_par, data, s=TRUE){
+  
+  #Creating the predictors:
+  eta           <- rep(0, length(data$kandidatnummer))
+  eta_without_s <- rep(0, length(data$kandidatnummer))
+  
+  #Creating an empty matrix to store the predicted results:
+  Y_predicted   <- matrix(0, ncol=ncol(data$Y), nrow=nrow(data$Y))
+  n_alpha       <- calculating_num_of_alphas(data$Y)
+  
+  for (q in 1:ncol(data$Y)){
+    
+    # Automatically corrected predictor:
+    for (i in 1:length(data$kandidatnummer)){
+      eta_without_s[i] <- -estimated_par$gamma[i,1]*estimated_par$lambda[q,1] 
+    }
+    
+    # Each unique possible score on question q:
+    points_q <- sort(unique(data$Y_m[,q]))
+    
+    # Automatically corrected question q
+    if (n_alpha[q] == 1){
+      Y_predicted[,q] <- data$Y[,q]
+      
+      # Manually corrected q:
+    } else {
+      
+      #Finding the thresholds:
+      theta_q <- c(alpha_to_theta(estimated_parameters_V22_m1$alpha[grep(paste0("^", paste0("alpha", q), "($|\\.)"), rownames(estimated_parameters_V22_m1$alpha)), 1]), Inf)
+      
+      # Manually with sensor bias:
+      for (i in 1:length(data$kandidatnummer)){
+        eta[i]  <- -estimated_par$gamma[i,1]*estimated_par$lambda[q,1] - estimated_par$s[data$kommisjon[i],1]*estimated_par$kappa[q-(length(estimated_parameters_V22_m1$lambda[,1])-length(estimated_parameters_V22_m1$kappa[,1])),1]
+      }
+      
+      # Updating predictor:
+      if (s){
+        predictor <- eta
+      } else {
+        predictor <- eta_without_s
+      }
+      
+      #Predicting response:
+      for (i in 1:nrow(data$Y)) {
+        
+        #Conditional on the observed date y_iq:
+        true_response <- data$Y[i,q]
+        
+        # Finding boundery, mean and variance of the truncated noraml distribution
+        if (true_response==0){
+          a <- -Inf
+        } else {
+          a     <- theta_q[true_response]
+        }
+        b     <- theta_q[true_response+1]
+        mu    <- predictor[i]  
+        sigma <- 1
+        
+        # Calculating the bias-shift: 
+        if (s==TRUE){
+          bias <- rep(0, length(eta))
+        } else {
+          bias <- eta - eta_without_s
+        }
+        
+        # Predicting the response:
+        for (yij in 1:(n_alpha[q])) {
+          Y_predicted[i,q] <- Y_predicted[i,q] + (ptruncnorm(theta_q[yij+1] - bias[i], a,b,mu,sigma)
+                                               -  ptruncnorm(theta_q[yij]   - bias[i], a,b,mu,sigma)) * points_q[yij+1]
+        }
+      }
+    }
+  }
+  
+  return(Y_predicted)
+}
+#debugonce(truncated_prediction)
+
+predicted_V22_m1_p2       <- truncated_prediction(estimated_parameters_V22_m1,RTMB_V22, s=TRUE)
+predicted_V22_m1_p2_utens <- truncated_prediction(estimated_parameters_V22_m1,RTMB_V22, s=FALSE)
 
 #########################################
 ## CREATING A DATAFRAME OF THE RESULTS ##
@@ -197,7 +266,57 @@ pred_to_dataframe <- function(predicted_Y, data){
 
 # Predicting:
 #debugonce(pred_to_dataframe)
-Predicted_points_V22_m1 <- pred_to_dataframe(predicted_V22_m1,RTMB_V22)
+Predicted_points_V22_m1_p2       <- pred_to_dataframe(predicted_V22_m1_p2,       RTMB_V22)
+Predicted_points_V22_m1_p2_utens <- pred_to_dataframe(predicted_V22_m1_p2_utens, RTMB_V22)
+
+library(dplyr)
+# Gjennomsnitt av Y_manu per kommisjon for Predicted_points_V22_m1_p2
+gj_snitt_med_s <- Predicted_points_V22_m1_p2 %>%
+  group_by(kommisjon) %>%
+  summarise(gjennomsnitt_Y_manu = mean(Y_sum_manu, na.rm = TRUE))
+
+# Gjennomsnitt av Y_manu per kommisjon for Predicted_points_V22_m1_p2_utens
+gj_snitt_utens_s <- Predicted_points_V22_m1_p2_utens %>%
+  group_by(kommisjon) %>%
+  summarise(gjennomsnitt_Y_manu = mean(Y_sum_manu, na.rm = TRUE))
+
+gj_snitt_med_s - gj_snitt_utens_s
+
+
+
+
+
 Predicted_points_V22_m2 <- pred_to_dataframe(predicted_V22_m2,RTMB_V22)
 Predicted_points_V23_m1 <- pred_to_dataframe(predicted_V23_m1,RTMB_V23)
 Predicted_points_V23_m2 <- pred_to_dataframe(predicted_V23_m2,RTMB_V23)
+
+################################
+## CALCULATING AVGEARGE ERROR ##
+################################
+
+Predicted_points_V22_m1_p2$Y_sum_manu
+RTMB_V22$Y_m[,ncol(RTMB_V22$Y_m)]+RTMB_V22$Y_m[,ncol(RTMB_V22$Y_m)-1]
+
+AVG_Error_m1 <- sum(abs(Predicted_points_V22_m1_p2$Y_sum_manu - (RTMB_V22$Y_m[,ncol(RTMB_V22$Y_m)]+RTMB_V22$Y_m[,ncol(RTMB_V22$Y_m)-1]))/length(Predicted_points_V22_m1$Y_sum_manu))
+AVG_Error_m2 <- sum(abs(Predicted_points_V22_m2$Y_sum_manu - (RTMB_V22$Y_m[,ncol(RTMB_V22$Y_m)]+RTMB_V22$Y_m[,ncol(RTMB_V22$Y_m)-1]))/length(Predicted_points_V22_m2$Y_sum_manu))
+AVG_Error_m1
+AVG_Error_m2
+
+#########################
+## ADVANCED PREDICTION ##
+#########################
+
+
+test_marginalization <- function(x, theta1, theta2){
+  y <- pnorm(theta2 - x) - pnorm(theta1 - x)  
+  return(y)
+} 
+
+testing <- test_marginalization(0, 0, 0.1)
+
+x_vals <- seq(-5, 5, by = 0.1)
+y_vals <- sapply(x_vals, test_marginalization, theta1 = 0, theta2 = 0.1)
+plot(x_vals, y_vals, type = "l", col = "blue", lwd = 2,
+     main = "Marginalization Plot",
+     xlab = "x", ylab = "y = P(theta1 < x < theta2)")
+

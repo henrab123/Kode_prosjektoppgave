@@ -9,9 +9,203 @@ KLAGE_V23$gamma <- estimated_parameters_V23_m1$gamma[,"Estimate"]
 KLAGE_V22$s <- estimated_parameters_V22_m1$s[,"Estimate"][as.numeric(factor(KLAGE_V22$kommisjon))]
 KLAGE_V23$s <- estimated_parameters_V23_m1$s[,"Estimate"][as.numeric(factor(KLAGE_V23$kommisjon))]
 
-#########################################
-### LOGISTISK REG ~ gamma, FinalGrade ###
-#########################################
+KLAGE_V22$Year <- char(2022)
+KLAGE_V23$Year <- char(2023)
+
+KLAGE_Kombinert <- bind_rows(KLAGE_V22, KLAGE_V23)
+KLAGE_Kombinert_UtenA$Year <- as.factor(KLAGE_Kombinert_UtenA$Year)
+
+KLAGE_V22_UtenA <- KLAGE_V22 %>% filter(finalGradeLabel != "A")
+KLAGE_V23_UtenA <- KLAGE_V23 %>% filter(finalGradeLabel != "A")
+KLAGE_Kombinert_UtenA <- KLAGE_Kombinert %>% filter(finalGradeLabel != "A")
+
+#####################
+### Visualization ###
+#####################
+
+
+ggplot(KLAGE_Kombinert_UtenA, aes(x = gamma, y = totalScore, color = Year)) +
+  geom_point(size = 4, alpha = 0.8, shape = 16) +
+  scale_color_manual(
+    values = c("2022" = "#1f77b4", "2023" = "#ff7f0e"),
+    labels = c("\u00c5r 2022", "\u00c5r 2023")
+  ) +
+  ggtitle((expression("Sammenheng mellom " ~ gamma ~ " og " ~ "total poengsum"))) + 
+  labs(
+    x = expression(gamma),
+    y = "Total poengsum",
+    color = "\u00c5rstall"
+  ) +
+  theme_minimal(base_size = 26) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    legend.position = c(0.05, 0.95),
+    legend.box.background = element_rect(color = "grey80"),
+    panel.grid.major = element_line(color = "grey90"),
+    panel.grid.minor = element_blank(),
+    axis.title.x = element_text(size = 40)
+  )
+
+######################################
+### TESTING COVARIATE SIGNIFICANCE ###
+######################################
+
+datasets <- list(KLAGE_V22_UtenA, KLAGE_V23_UtenA, KLAGE_Kombinert_UtenA)
+dataset_names <- c("KLAGE_V22_UtenA", "KLAGE_V23_UtenA", "KLAGE_Kombinert_UtenA")
+vars <- c("s", "gamma", "finalGradeLabel", "totalScore")
+
+#Loopiong over data
+for (j in seq_along(datasets)) {
+  df <- datasets[[j]]
+  cat("\nResultater for datasett:", dataset_names[j], "\n")
+  
+  p_values <- numeric(length(vars))
+  
+  for (i in seq_along(vars)) {
+    formula_full <- as.formula(paste("klagde ~", vars[i]))
+    formula_null <- as.formula("klagde ~ 1")
+    
+    model_full <- glm(formula_full, data = df, family = binomial)
+    model_null <- glm(formula_null, data = df, family = binomial)
+    
+    #LRT
+    lr_test <- anova(model_null, model_full, test = "Chisq")
+    
+    #p_value
+    p_values[i] <- lr_test$`Pr(>Chi)`[2]
+  }
+  
+  #Printing
+  result <- data.frame(Variable = vars, P_value = p_values)
+  print(result)
+}
+
+#Year as well:
+model_full <- glm(klagde ~ Year, data = KLAGE_Kombinert_UtenA, family = binomial)
+model_null <- glm(klagde ~1, data = KLAGE_Kombinert_UtenA, family = binomial)
+
+#LRT
+lr_test <- anova(model_null, model_full, test = "Chisq")
+lr_test$`Pr(>Chi)`[2]  
+
+#s to test as well:
+model_full <- glm(klagde ~ s, data = KLAGE_Kombinert_UtenA, family = binomial)
+model_null <- glm(klagde ~1, data = KLAGE_Kombinert_UtenA, family = binomial)
+
+#LRT
+lr_test <- anova(model_null, model_full, test = "Chisq")
+lr_test$`Pr(>Chi)`[2]  
+#############################
+### V22 - MODEL SELECTION ###
+#############################
+
+# Full model:
+full_model_V22 <- glm(klagde ~ (gamma + finalGradeLabel + totalScore)^2, data = KLAGE_V22_UtenA, family = binomial)
+
+# Model selection AIC:
+best_model_AIC_V22 <- step(full_model_V22, direction = "both")
+
+# Model selection BIC:
+best_model_BIC_V22 <- step(full_model_V22, direction = "both", k = log(nrow(KLAGE_V22_UtenA)))
+
+# Best Models by BIC: 
+model_V22_1 <- glm(klagde ~ gamma + finalGradeLabel + totalScore, data = KLAGE_V22_UtenA, family = binomial)
+summary(model_V22_1)
+
+model_V22_2 <- glm(klagde ~ finalGradeLabel + totalScore, data = KLAGE_V22_UtenA, family = binomial)
+summary(model_V22_2)
+
+model_V22_3 <- glm(klagde ~ gamma + finalGradeLabel, data = KLAGE_V22_UtenA, family = binomial)
+summary(model_V22_3)
+
+#############################
+### V23 - MODEL SELECTION ###
+#############################
+
+# Full model:
+full_model_V23 <- glm(klagde ~ (gamma + finalGradeLabel + totalScore)^2, data = KLAGE_V23_UtenA, family = binomial)
+
+# Model selection AIC:
+best_model_AIC_V23 <- step(full_model_V23, direction = "both")
+
+# Model selection BIC:
+best_model_BIC_V23 <- step(full_model_V23, direction = "both", k = log(nrow(KLAGE_V23_UtenA)))
+
+# Best Models by BIC: 
+model_V23_1 <- glm(klagde ~ totalScore + finalGradeLabel, data = KLAGE_V23_UtenA, family = binomial)
+summary(model_V23_1)
+
+model_V23_2 <- glm(klagde ~ gamma + finalGradeLabel, data = KLAGE_V23_UtenA, family = binomial)
+summary(model_V23_2)
+
+##############################
+### VCMB - MODEL SELECTION ###
+##############################
+
+# Full model:
+full_model_Kombinert <- glm(klagde ~ (gamma + finalGradeLabel + totalScore + Year)^2, data = KLAGE_Kombinert_UtenA, family = binomial)
+
+# Model selection AIC:
+best_model_AIC_Kombinert <- step(full_model_Kombinert, direction = "both")
+
+# Model selection BIC:
+best_model_BIC_Kombinert <- step(full_model_Kombinert, direction = "both", k = log(nrow(KLAGE_Kombinert_UtenA)))
+
+# Best Models by BIC: 
+model_VCMB_1 <- glm(klagde ~ totalScore + finalGradeLabel + Year, data = KLAGE_Kombinert_UtenA, family = binomial)
+step(model_VCMB_1)
+
+model_VCMB_2 <- glm(klagde ~ gamma + finalGradeLabel + Year, data = KLAGE_Kombinert_UtenA, family = binomial)
+step(model_VCMB_2)
+
+
+
+
+
+
+model_with_interaction <- glm(klagde ~ gamma + finalGradeLabel + Year + gamma:finalGradeLabel, data = KLAGE_Kombinert_UtenA, family = binomial)
+
+model_no_interaction <- glm(klagde ~ gamma + finalGradeLabel + Year, data = KLAGE_Kombinert_UtenA, family = binomial)
+
+anova(model_no_interaction, model_with_interaction, test = "Chisq")
+
+
+
+modelVCMB_2 <- glm(klagde ~ totalScore + finalGradeLabel + Year, data = KLAGE_Kombinert_UtenA, family = binomial)
+summary(modelVCMB_2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 model_V22 <- glm(klagde ~ gamma + finalGradeLabel, data = KLAGE_V22, family = binomial)
 summary(model_V22)
@@ -46,7 +240,7 @@ full_model <- glm(klagde ~ (s + gamma + finalGradeLabel + totalScore)^2, data = 
 # Stepwise selection
 best_model <- step(full_model)
 
-Nesten_optimal_modell <- glm(klagde ~ s + gamma + finalGradeLabel + totalScore, data = KLAGE_V22_UtenA, family = binomial)
+Nesten_optimal_modell <- glm(klagde ~  s + gamma + finalGradeLabel + totalScore, data = KLAGE_V22_UtenA, family = binomial)
 summary(Nesten_optimal_modell)
 
 Optimal_modell <- glm(klagde ~ gamma + finalGradeLabel + totalScore, data = KLAGE_V22_UtenA, family = binomial)
@@ -58,12 +252,26 @@ summary(Optimal_modellA)
 Optimal_modellB <- glm(klagde ~ finalGradeLabel + totalScore, data = KLAGE_V22_UtenA, family = binomial)
 summary(Optimal_modellB)
 
-KLAGE_V22$predicted <- predict(model, type = "response")
+Null_modellB <- glm(klagde ~ 1, data = KLAGE_V22_UtenA, family = binomial)
+summary(Null_modellB)
+
+anova(Null_modellB, Optimal_modellB, test = "Chisq")
+
+####################
+### LARGER MODEL ###
+####################
+
+# Full model
+full_model <- glm(klagde ~ (s + gamma + finalGradeLabel + totalScore)^2, data = KLAGE_V22_UtenA, family = binomial)
+
+# Stepwise selection
+best_model <- step(full_model)
+
+####################
+### ............ ###
+####################
 
 
-
-
-KLAGE_V22_UtenA <- KLAGE_V22 %>% filter(finalGradeLabel != "A")
 model_V22_utenA <- glm(klagde ~ gamma + finalGradeLabel, data = KLAGE_V22_UtenA, family = binomial)
 summary(model_V22_utenA)
 

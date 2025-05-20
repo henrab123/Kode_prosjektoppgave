@@ -3,14 +3,13 @@ set.seed(2)
 
 #Defining function:
 simulate_data <- function(N=100, 
-                          K=2, 
-                          K_f=FALSE, 
+                          Kommisjon=2, 
+                          K_Nr=NULL, 
                           s=redp(1,K), 
                           gamma=rep(0,N), 
                           QA=2, AT=c(-0.5, 1), 
                           QM=2, MT=matrix(c(-1,-0.5,3,4,5,6), nrow=2, ncol=3, byrow=TRUE),
-                          lambda=rep(1,QA+QM), kappa=rep(1,QM),
-                          model = 1){
+                          lambda=rep(1,QA+QM), kappa=rep(1,QM)){
   
  "DESCRIPTION OF THE FUNCTION:
   Input variables:
@@ -25,52 +24,32 @@ simulate_data <- function(N=100,
   
   This function simulates results from exams based on the model we want to evaluate. 
   "
-  
-  
-  #Checking the inputs:
-  if (length(K_f) > 1 & length(K_f) != K) {
-    warning("Dimensions of K_f do not fit the value of K!")
-  }
-  if (length(s) != K) {
-    warning("Dimensions of s do not fit the value of K!")
-  }
+
   if (length(AT) != QA) {
     warning("Dimensions of AT do not fit the value of QA!")
   }
-  if (N %% K != 0) {  # Check if N is not divisible by K
-    warning("N is not evenly divisible by K!")
-  }
+
   
   #Implementation:
   simulated_data <- NULL
   
   #Commission
-  if (length(K_f) > 1){
-    commission  <- c()
-    for (i in 1:length(K_f)){
-      commission <- c(commission, rep(i, K_f[i]*N))
-    }
-    simulated_data$kommisjon <- commission
-  } else {
-    simulated_data$kommisjon= rep(1:K, N/K)
-  }
+  simulated_data$kommisjon <- Kommisjon
+
 
   #Candidate number:
-  simulated_data$kandidatnummer <- seq(1, N)
+  if (is.null(K_Nr)){
+    simulated_data$kandidatnummer <- seq(1, N)
+  } else {
+    simulated_data$kandidatnummer <- K_Nr
+  }
   
   #Data:
   simulated_data$Y <- matrix(0, nrow = N, ncol = (QA + QM))
   
   #Defining models:
-  if (model == 1){
-    eta_a <- function(q,i) gamma[i]
-    eta_m <- function(q,i) gamma[i] + s[simulated_data$kommisjon[i]]
-  }
-  
-  if (model == 2){
-    eta_a <- function(q,i) lambda[q]*gamma[i]
-    eta_m <- function(q,i) lambda[q+QA]*gamma[i] + kappa(q)*s[simulated_data$kommisjon[i]]
-  }
+  eta_a <- function(q,i) lambda[q]*gamma[i]
+  eta_m <- function(q,i) lambda[q+QA]*gamma[i] + kappa(q)*s[simulated_data$kommisjon[i]]
   
   for (q in 1:QA){
     for (i in 1:N){
@@ -97,6 +76,8 @@ simulate_data <- function(N=100,
                     ferdigheter = gamma,
                     Y = I(simulated_data$Y)))
 }
+
+
 
 make_parameter_list <- function(N, K, log_std_gamma = log(1), log_std_s = log(1), QA, QM, Theta_a, Theta_m){
   
@@ -328,22 +309,6 @@ error <- simulation(50, 1)
 
 plot(seq(length(error$gamma)), abs(error$gamma))
 abline(h = mean(error$gamma), col = "red", lwd = 2, lty = 2)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
